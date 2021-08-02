@@ -1,0 +1,28 @@
+version: '3.0'
+
+services:
+  lab:
+    image: docker.io/wook3024/fsdl-lab:0.0.1
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: lab
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - capabilities: [gpu]
+    ports: 
+      - 5000:5000
+    volumes:
+      - ./:/workspace
+    tty: true
+
+volumes: 
+  lab: {}
+
+networks:
+  our_net:
+    ipam:
+      config:
+        - subnet: 184.20.0.0/24
