@@ -1,6 +1,12 @@
+import sys
+
+sys.path.append("/workspace/lab2")
+
+
 """Experiment-running framework."""
 import argparse
 import importlib
+import types
 
 import numpy as np
 import torch
@@ -18,9 +24,13 @@ torch.manual_seed(42)
 def _import_class(module_and_class_name: str) -> type:
     """Import class from a module, e.g. 'text_recognizer.models.MLP'"""
     module_name, class_name = module_and_class_name.rsplit(".", 1)
+    if any(x in class_name for x in ["resnet", "resnext"]):
+        class_name = "ResNet"
     module = importlib.import_module(module_name)
-    class_ = getattr(module, class_name)
-    return class_
+    selected_module = getattr(module, class_name)
+    if isinstance(selected_module, types.FunctionType):
+        selected_module = selected_module()
+    return selected_module
 
 
 def _setup_parser():
@@ -29,7 +39,10 @@ def _setup_parser():
 
     # Add Trainer specific arguments, such as --max_epochs, --gpus, --precision
     trainer_parser = pl.Trainer.add_argparse_args(parser)
-    trainer_parser._action_groups[1].title = "Trainer Args"  # pylint: disable=protected-access
+    # print("\033[95m" + "trainer_parser: " + "\033[m" + "\033[94m" + f"{trainer_parser}" + "\033[m")
+    trainer_parser._action_groups[
+        1
+    ].title = "Trainer Args"  # pylint: disable=protected-access
     parser = argparse.ArgumentParser(add_help=False, parents=[trainer_parser])
 
     # Basic arguments
@@ -39,8 +52,11 @@ def _setup_parser():
 
     # Get the data and model classes, so that we can add their specific arguments
     temp_args, _ = parser.parse_known_args()
+
     data_class = _import_class(f"text_recognizer.data.{temp_args.data_class}")
     model_class = _import_class(f"text_recognizer.models.{temp_args.model_class}")
+    # data_class = _import_class(f"text_recognizer.data.{temp_args.data_class}")
+    # model_class = _import_class(f"text_recognizer.models.{temp_args.model_class}")
 
     # Get data, model, and LitModel specific arguments
     data_group = parser.add_argument_group("Data Args")
@@ -66,7 +82,9 @@ def main():
     ```
     """
     parser = _setup_parser()
+
     args = parser.parse_args()
+
     data_class = _import_class(f"text_recognizer.data.{args.data_class}")
     model_class = _import_class(f"text_recognizer.models.{args.model_class}")
     data = data_class(args)
@@ -76,28 +94,37 @@ def main():
         lit_model_class = lit_models.BaseLitModel
 
     if args.load_checkpoint is not None:
-        lit_model = lit_model_class.load_from_checkpoint(args.load_checkpoint, args=args, model=model)
+        lit_model = lit_model_class.load_from_checkpoint(
+            args.load_checkpoint, args=args, model=model
+        )
     else:
         lit_model = lit_model_class(args=args, model=model)
 
     logger = pl.loggers.TensorBoardLogger("training/logs")
 
-    early_stopping_callback = pl.callbacks.EarlyStopping(monitor="val_loss", mode="min", patience=10)
+    early_stopping_callback = pl.callbacks.EarlyStopping(
+        monitor="val_loss", mode="min", patience=10
+    )
     model_checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        filename="{epoch:03d}-{val_loss:.3f}-{val_cer:.3f}", monitor="val_loss", mode="min"
+        filename="{epoch:03d}-{val_loss:.3f}-{val_cer:.3f}",
+        monitor="val_loss",
+        mode="min",
     )
     callbacks = [early_stopping_callback, model_checkpoint_callback]
 
     args.weights_summary = "full"  # Print full summary of the model
-    trainer = pl.Trainer.from_argparse_args(args, callbacks=callbacks, logger=logger, weights_save_path="training/logs")
+    trainer = pl.Trainer.from_argparse_args(
+        args, callbacks=callbacks, logger=logger, weights_save_path="training/logs"
+    )
 
     # pylint: disable=no-member
-    trainer.tune(lit_model, datamodule=data)  # If passing --auto_lr_find, this will set learning rate
+    trainer.tune(
+        lit_model, datamodule=data
+    )  # If passing --auto_lr_find, this will set learning rate
 
     trainer.fit(lit_model, datamodule=data)
     trainer.test(lit_model, datamodule=data)
     # pylint: enable=no-member
-
 
 
 if __name__ == "__main__":
