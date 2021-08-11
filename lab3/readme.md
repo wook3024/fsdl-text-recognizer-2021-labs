@@ -1,3 +1,5 @@
+# Homework -> https://shinuk.notion.site/Homework-015cbe206fcf434f894e63ab3ac8c41b
+
 # Lab 3: Using CNN + LSTM with CTC loss for line text recognition
 
 ## Goals
