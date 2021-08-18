@@ -15,6 +15,10 @@ FC_DIM = 512
 WINDOW_WIDTH = 16
 WINDOW_STRIDE = 8
 
+LSTM_DIM = 512
+LSTM_LAYERS = 1
+LSTM_DROPOUT = 0.2
+
 
 class ConvBlock(nn.Module):
     """
