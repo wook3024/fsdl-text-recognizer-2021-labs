@@ -8,8 +8,8 @@ from .line_cnn import LineCNN
 from .transformer_util import PositionalEncoding, generate_square_subsequent_mask
 
 
-TF_DIM = 64
-TF_FC_DIM = 64
+TF_DIM = 128
+TF_FC_DIM = 128
 TF_DROPOUT = 0.4
 TF_LAYERS = 4
 TF_NHEAD = 4
