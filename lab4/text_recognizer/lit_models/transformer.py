@@ -27,7 +27,7 @@ class TransformerLitModel(BaseLitModel):  # pylint: disable=too-many-ancestors
         padding_index = inverse_mapping["<P>"]
 
         # self.loss_fn = nn.CrossEntropyLoss(ignore_index=padding_index)
-        self.loss_fn = nn.CrossEntropyLoss(ignore_index=padding_index)
+        self.loss_fn = nn.CrossEntropyLoss()
 
         self.train_acc = pl.metrics.Accuracy()
         self.val_acc = pl.metrics.Accuracy()

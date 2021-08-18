@@ -35,7 +35,7 @@ def _download_raw_dataset(metadata: Dict, dl_dirname: Path) -> Path:
     return filename
 
 
-BATCH_SIZE = 64
+BATCH_SIZE = 16
 NUM_WORKERS = 0
 
 
