@@ -58,6 +58,9 @@ class LineCNNTransformer(nn.Module):
             num_layers=tf_layers,
         )
 
+        self.encoder_layer_norm = nn.LayerNorm(self.dim)
+        self.decoder_layer_norm = nn.LayerNorm(self.dim)
+
         self.init_weights()  # This is empirically important
 
     def init_weights(self):
@@ -82,6 +85,7 @@ class LineCNNTransformer(nn.Module):
         x = x * math.sqrt(self.dim)
         x = x.permute(2, 0, 1)  # (Sx, B, E)
         x = self.pos_encoder(x)  # (Sx, B, E)
+        x = self.encoder_layer_norm(x)
         return x
 
     def decode(self, x, y):
@@ -107,6 +111,7 @@ class LineCNNTransformer(nn.Module):
         output = self.transformer_decoder(
             tgt=y, memory=x, tgt_mask=y_mask, tgt_key_padding_mask=y_padding_mask
         )  # (Sy, B, E)
+        output = self.decoder_layer_norm(output)
         output = self.fc(output)  # (Sy, B, C)
         return output
 

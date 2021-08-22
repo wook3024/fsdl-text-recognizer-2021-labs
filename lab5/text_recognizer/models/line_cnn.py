@@ -1,4 +1,5 @@
-from typing import Any, Dict, Union, Tuple
+from typing import Any, Dict, Union, Tuple, Optional
+from loguru import logger
 import argparse
 import math
 import torch
@@ -19,34 +20,56 @@ class ConvBlock(nn.Module):
     """
     Simple 3x3 conv with padding size 1 (to leave the input size unchanged), followed by a ReLU.
     """
+    expansion: int = 1
 
-    def __init__(
-        self,
-        input_channels: int,
-        output_channels: int,
-        kernel_size: Param2D = 3,
-        stride: Param2D = 1,
-        padding: Param2D = 1,
-    ) -> None:
+    def __init__(self, input_channels: int, output_channels: int, kernel_size = 3, stride: int = 1, downsample: Optional[nn.Module] = None, padding: int = 1) -> None:
         super().__init__()
-        self.conv = nn.Conv2d(input_channels, output_channels, kernel_size=kernel_size, stride=stride, padding=padding)
+
+        self.downsample = downsample
+        self.padding = padding
+        expansion_channels = input_channels * 4
+        self.conv1 = nn.Conv2d(
+            input_channels, 
+            expansion_channels, 
+            kernel_size=kernel_size, 
+            stride=1,
+            padding=padding,
+            bias=False,
+        )
+        self.bn1 = nn.BatchNorm2d(expansion_channels)
+        self.conv2 = nn.Conv2d(
+            expansion_channels if padding != 0 else input_channels, 
+            output_channels, 
+            kernel_size=kernel_size, 
+            stride=stride,
+            padding=padding,
+            bias=False,
+        )
+        self.bn2 = nn.BatchNorm2d(output_channels)
         self.relu = nn.ReLU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Parameters
-        ----------
-        x
-            of dimensions (B, C, H, W)
+        identity = x
+        if self.padding != 0:
+            out = self.conv1(x)
+            out = self.bn1(out)
+            out = self.relu(out)
+        else:
+            out = x
 
-        Returns
-        -------
-        torch.Tensor
-            of dimensions (B, C, H, W)
-        """
-        c = self.conv(x)
-        r = self.relu(c)
-        return r
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out += identity
+        out = self.relu(out)
+        
+
+        return out
+
 
 
 class LineCNN(nn.Module):
@@ -72,21 +95,47 @@ class LineCNN(nn.Module):
         self.WS = self.args.get("window_stride", WINDOW_STRIDE)
         self.limit_output_length = self.args.get("limit_output_length", False)
 
+
+        downsample_1x = nn.Sequential(
+            nn.Conv2d(
+                conv_dim, conv_dim, kernel_size=3, stride=2, bias=False, padding=1
+            ),
+            nn.BatchNorm2d(conv_dim),
+        )
+        downsample_2x = nn.Sequential(
+            nn.Conv2d(
+                conv_dim, conv_dim * 2, kernel_size=3, stride=2, bias=False, padding=1
+            ),
+            nn.BatchNorm2d(conv_dim * 2),
+        )
+        downsample_4x = nn.Sequential(
+            nn.Conv2d(
+                conv_dim * 2, conv_dim * 4, kernel_size=3, stride=2, bias=False, padding=1
+            ),
+            nn.BatchNorm2d(conv_dim * 4),
+        )
+        downsample_last = nn.Sequential(
+            nn.Conv2d(
+                conv_dim * 4, fc_dim, kernel_size=(H // 8, self.WW // 8), stride=(H // 8, self.WS // 8), bias=False, padding=0,
+            ),
+            nn.BatchNorm2d(fc_dim),
+        )
         # Input is (1, H, W)
         self.convs = nn.Sequential(
             ConvBlock(1, conv_dim),
             ConvBlock(conv_dim, conv_dim),
-            ConvBlock(conv_dim, conv_dim, stride=2),
+            ConvBlock(conv_dim, conv_dim, stride=2, downsample=downsample_1x),
             ConvBlock(conv_dim, conv_dim),
-            ConvBlock(conv_dim, conv_dim * 2, stride=2),
+            ConvBlock(conv_dim, conv_dim * 2, stride=2, downsample=downsample_2x),
             ConvBlock(conv_dim * 2, conv_dim * 2),
-            ConvBlock(conv_dim * 2, conv_dim * 4, stride=2),
+            ConvBlock(conv_dim * 2, conv_dim * 4, stride=2, downsample=downsample_4x),
             ConvBlock(conv_dim * 4, conv_dim * 4),
             ConvBlock(
-                conv_dim * 4, fc_dim, kernel_size=(H // 8, self.WW // 8), stride=(H // 8, self.WS // 8), padding=0
+                conv_dim * 4, fc_dim, kernel_size=(H // 8, self.WW // 8), stride=(H // 8, self.WS // 8), downsample=downsample_last, padding=0
             ),
         )
         self.fc1 = nn.Linear(fc_dim, fc_dim)
+        self.layer_norm_ = nn.LayerNorm(fc_dim)
         self.dropout = nn.Dropout(0.2)
         self.fc2 = nn.Linear(fc_dim, self.num_classes)
 
@@ -115,7 +164,7 @@ class LineCNN(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Parameters
+        Parameters]
         ----------
         x
             (B, 1, H, W) input image
@@ -131,6 +180,7 @@ class LineCNN(nn.Module):
         x = self.convs(x)  # (B, FC_DIM, 1, Sx)
         x = x.squeeze(2).permute(0, 2, 1)  # (B, S, FC_DIM)
         x = F.relu(self.fc1(x))  # -> (B, S, FC_DIM)
+        x = self.layer_norm_(x)
         x = self.dropout(x)
         x = self.fc2(x)  # (B, S, C)
         x = x.permute(0, 2, 1)  # -> (B, C, S)

@@ -8,8 +8,8 @@ from .line_cnn import LineCNN
 from .transformer_util import PositionalEncoding, generate_square_subsequent_mask
 
 
-TF_DIM = 128
-TF_FC_DIM = 128
+TF_DIM = 256
+TF_FC_DIM = 256
 TF_DROPOUT = 0.4
 TF_LAYERS = 4
 TF_NHEAD = 4
@@ -54,9 +54,12 @@ class LineCNNTransformer(nn.Module):
         self.y_mask = generate_square_subsequent_mask(self.max_output_length)
 
         self.transformer_decoder = nn.TransformerDecoder(
-            nn.TransformerDecoderLayer(d_model=self.dim, nhead=tf_nhead, dim_feedforward=tf_fc_dim),
+            nn.TransformerDecoderLayer(d_model=self.dim, nhead=tf_nhead, dim_feedforward=tf_fc_dim, dropout=tf_dropout),
             num_layers=tf_layers,
         )
+
+        self.encoder_layer_norm = nn.LayerNorm(self.dim)
+        self.decoder_layer_norm = nn.LayerNorm(self.dim)
 
         self.init_weights()  # This is empirically important
 
@@ -82,6 +85,7 @@ class LineCNNTransformer(nn.Module):
         x = x * math.sqrt(self.dim)
         x = x.permute(2, 0, 1)  # (Sx, B, E)
         x = self.pos_encoder(x)  # (Sx, B, E)
+        x = self.encoder_layer_norm(x)
         return x
 
     def decode(self, x, y):
@@ -107,6 +111,7 @@ class LineCNNTransformer(nn.Module):
         output = self.transformer_decoder(
             tgt=y, memory=x, tgt_mask=y_mask, tgt_key_padding_mask=y_padding_mask
         )  # (Sy, B, E)
+        output = self.decoder_layer_norm(output)
         output = self.fc(output)  # (Sy, B, C)
         return output
 

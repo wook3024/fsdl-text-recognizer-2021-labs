@@ -1,4 +1,5 @@
 import torch.nn as nn
+import pytorch_lightning as pl
 try:
     import wandb
 except ModuleNotFoundError:
@@ -26,6 +27,10 @@ class TransformerLitModel(BaseLitModel):  # pylint: disable=too-many-ancestors
         padding_index = inverse_mapping["<P>"]
 
         self.loss_fn = nn.CrossEntropyLoss(ignore_index=padding_index)
+
+        self.train_acc = pl.metrics.Accuracy()
+        self.val_acc = pl.metrics.Accuracy()
+        self.test_acc = pl.metrics.Accuracy()
 
         ignore_tokens = [start_index, end_index, padding_index]
         self.val_cer = CharacterErrorRate(ignore_tokens)
@@ -55,6 +60,8 @@ class TransformerLitModel(BaseLitModel):  # pylint: disable=too-many-ancestors
         except AttributeError:
             pass
         # Hide lines above until Lab 5
+        self.val_acc(pred, y)
+        self.log("val_acc", self.val_acc, on_step=False, on_epoch=True)
         self.val_cer(pred, y)
         self.log("val_cer", self.val_cer, on_step=False, on_epoch=True, prog_bar=True)
 
@@ -68,5 +75,7 @@ class TransformerLitModel(BaseLitModel):  # pylint: disable=too-many-ancestors
         except AttributeError:
             pass
         # Hide lines above until Lab 5
+        self.test_acc(pred, y)
+        self.log("test_acc", self.test_acc, on_step=False, on_epoch=True)
         self.test_cer(pred, y)
         self.log("test_cer", self.test_cer, on_step=False, on_epoch=True, prog_bar=True)
