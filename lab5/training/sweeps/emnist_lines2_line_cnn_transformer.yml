@@ -34,7 +34,7 @@ parameters:
   lr:
     values: [0.01, 0.001, 0.0003]
   num_workers:
-    value: 20
+    value: 0
   gpus:
     value: -1
   data_class:
@@ -44,6 +44,6 @@ parameters:
   loss:
     value: transformer
   batch_size:
-    value: 128
+    value: 32
   precision:
     value: 16
