@@ -5,6 +5,7 @@ from unittest import TestCase
 import base64
 
 from api_server.app import app
+from fastapi.testclient import TestClient
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
@@ -16,15 +17,18 @@ EXPECTED_PRED = "And, since this is election year in West\nGermany, Dr. Adenauer
 
 class TestIntegrations(TestCase):
     def setUp(self):
-        self.app = app.test_client()
+        # self.app = app.test_client()
+        self.app = TestClient(app)
 
     def test_index(self):
         response = self.app.get("/")
-        assert response.get_data().decode() == "Hello, world!"
+        # assert response.get_data().decode() == "Hello, world!"
+        assert response.json() == "Hello, world!"
 
     def test_predict(self):
         with open(FILENAME, "rb") as f:
             b64_image = base64.b64encode(f.read())
         response = self.app.post("/v1/predict", json={"image": f"data:image/png;base64,{b64_image.decode()}"})
-        json_data = response.get_json()
+        # json_data = response.get_json()
+        json_data = response.json()
         self.assertEqual(json_data["pred"], EXPECTED_PRED)
